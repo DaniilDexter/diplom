@@ -1,3 +1,9 @@
-from django.shortcuts import render
+from rest_framework.viewsets import ModelViewSet
 
-# Create your views here.
+from .models import Column
+from .serializers import ColumnSerializer
+
+
+class ColumnViewSet(ModelViewSet):
+    serializer_class = ColumnSerializer
+    queryset = Column.objects.all()
