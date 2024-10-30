@@ -1,0 +1,27 @@
+from django.db import models
+from board.models import Board
+from column.models import Column
+from authentication.models import User, UserRole
+from priority.models import Priority
+from tag.models import Tag
+
+class Task(models.Model):
+    board = models.ForeignKey(Board, verbose_name='Доска', on_delete=models.CASCADE, related_name='tasks')
+    column = models.ForeignKey(Column, verbose_name='Колонка', on_delete=models.SET_NULL, null=True, related_name='tasks')
+    title = models.CharField(verbose_name='Название', max_length=100)
+    description = models.TextField(verbose_name='Описание', blank=True, null=True)
+    image = models.ImageField(verbose_name='Фото', upload_to='tasks/images/', blank=True, null=True)
+    assigned_to = models.ForeignKey(User, verbose_name='Исполнитель', on_delete=models.SET_NULL, null=True, blank=True, related_name='tasks')
+    role = models.ForeignKey(UserRole, verbose_name='Роль', on_delete=models.SET_NULL, null=True, blank=True)
+    priority = models.ForeignKey(Priority, verbose_name='Приоритет', on_delete=models.SET_NULL, null=True, related_name='tasks')
+    due_date = models.DateField(verbose_name='Срок сдачи', null=True, blank=True)
+    created_at = models.DateTimeField(verbose_name='Создан', auto_now_add=True)
+    updated_at = models.DateTimeField(verbose_name='Изменён', auto_now=True)
+    tags = models.ManyToManyField(Tag, verbose_name='Теги', related_name='tasks')
+
+    def __str__(self):
+        return self.title
+
+    class Meta:
+        verbose_name = 'Задача'
+        verbose_name_plural = 'Задачи'
