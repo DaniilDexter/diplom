@@ -37,7 +37,7 @@ class UserViewSet(ModelViewSet):
 
         refresh = RefreshToken.for_user(user)
         response = Response()
-        response.data = {'acsess': str(refresh.access_token)}
+        response.data = {'access': str(refresh.access_token)}
         return response
 
     @action(methods=['GET'], detail=False, permission_classes=[IsAuthenticated], url_path='me')
