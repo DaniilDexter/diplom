@@ -18,6 +18,10 @@ class Task(models.Model):
     created_at = models.DateTimeField(verbose_name='Создан', auto_now_add=True)
     updated_at = models.DateTimeField(verbose_name='Изменён', auto_now=True)
     tags = models.ManyToManyField(Tag, verbose_name='Теги', related_name='tasks')
+    assigned_at = models.DateTimeField(verbose_name='Назначена', null=True, blank=True)
+    started_at = models.DateTimeField(verbose_name='Приступил к работе', null=True, blank=True)
+    submitted_at = models.DateTimeField(verbose_name='Отправлена на проверку', null=True, blank=True)
+    completed_at = models.DateTimeField(verbose_name='Выполнена', null=True, blank=True)
 
     def __str__(self):
         return self.title

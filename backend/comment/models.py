@@ -9,7 +9,7 @@ class Comment(models.Model):
     created_at = models.DateTimeField(verbose_name='Создан', auto_now_add=True)
 
     def __str__(self):
-        return f"Комментарий {self.author.username} на {self.task.title}"
+        return f"Комментарий {self.author.username} к {self.task.title}"
     
     class Meta:
         verbose_name = 'Комментарий'

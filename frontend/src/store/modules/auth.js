@@ -75,20 +75,23 @@ export const authModule = {
         //         }
         //     }
         // },
-        // register: async ({ commit }, user) => {
-        //     commit('setStatus', 'loading');
-        //     commit('setError', null);
-        //     try {
-        //         await api.register(user);
+        register: async ({ commit }, { email, username, password }) => {
+            commit('setStatus', 'loading');
+            commit('setError', null);
+            try {
+                const { data: { access, data } } = await api.register({ email, username, password });
 
-        //         commit('setStatus', 'success');
-        //     } catch (error) {
-        //         if (error instanceof Error) {
-        //             commit('setStatus', 'error');
-        //             commit('setError', error.message);
-        //         }
-        //     }
-        // },
+                cookie.setCookie(ACCESS_TOKEN, access);
+
+                commit('setStatus', 'success');
+                commit('setUser', data);
+            } catch (error) {
+                if (error instanceof Error) {
+                    commit('setStatus', 'error');
+                    commit('setError', error.message);
+                }
+            }
+        },
     },
     getters: {
         user: state => state.user,

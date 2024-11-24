@@ -1,15 +1,22 @@
-<script setup>
+<script>
 import { RouterLink, RouterView } from 'vue-router'
 import HelloWorld from './components/HelloWorld.vue'
+
+import { mapGetters } from 'vuex';
+
+export default {
+    name: 'HomePage',
+    computed: {
+        ...mapGetters('auth', ['user'])
+    }
+}
 </script>
 
 <template>
-  <header>
+  <header v-if="user">
     <img alt="Vue logo" class="logo" src="@/assets/logo.svg" width="125" height="125" />
 
     <div class="wrapper">
-      <HelloWorld msg="You did it!" />
-
       <nav>
         <RouterLink to="/">Home</RouterLink>
         <RouterLink to="/auth">About</RouterLink>

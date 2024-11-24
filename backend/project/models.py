@@ -7,7 +7,6 @@ class Project(models.Model):
     owner = models.ForeignKey(User, verbose_name='Владелец', on_delete=models.CASCADE, related_name='owned_projects')
     members = models.ManyToManyField(User, verbose_name='Участники', through='ProjectMembers', related_name='projects')
     created_at = models.DateTimeField(verbose_name='Создан', auto_now_add=True)
-    updated_at = models.DateTimeField(verbose_name='изменён', auto_now=True)
 
     def __str__(self):
         return self.name
