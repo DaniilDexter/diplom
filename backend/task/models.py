@@ -22,6 +22,7 @@ class Task(models.Model):
     started_at = models.DateTimeField(verbose_name='Приступил к работе', null=True, blank=True)
     submitted_at = models.DateTimeField(verbose_name='Отправлена на проверку', null=True, blank=True)
     completed_at = models.DateTimeField(verbose_name='Выполнена', null=True, blank=True)
+    time = models.TimeField(verbose_name='Время', null=True, blank=True)
 
     def __str__(self):
         return self.title
@@ -29,3 +30,7 @@ class Task(models.Model):
     class Meta:
         verbose_name = 'Задача'
         verbose_name_plural = 'Задачи'
+
+class Subtask(models.Model):
+    title = models.CharField(verbose_name='Название', max_length=100)
+    task = models.ForeignKey('Task', verbose_name='Задача', on_delete=models.CASCADE, related_name='subtasks')

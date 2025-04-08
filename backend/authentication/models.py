@@ -9,6 +9,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     photo = models.ImageField(upload_to='user_photos/', null=True, blank=True, verbose_name="Фотография пользователя")
     role = models.ManyToManyField('UserRole', blank=True, verbose_name="Роль")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    friends = models.ManyToManyField('User', blank=True, verbose_name="Друзья")
 
     is_active = models.BooleanField(verbose_name='Активирован', default=True)
     is_staff = models.BooleanField(verbose_name='Сотрудник', default=False)

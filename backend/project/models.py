@@ -4,6 +4,7 @@ from authentication.models import User, UserRole
 class Project(models.Model):
     name = models.CharField(verbose_name='Название', max_length=100)
     description = models.TextField(verbose_name='Описание', blank=True, null=True)
+    key = models.CharField(verbose_name='Уникальный ключ', max_length=10, blank=True, null=True)
     owner = models.ForeignKey(User, verbose_name='Владелец', on_delete=models.CASCADE, related_name='owned_projects')
     members = models.ManyToManyField(User, verbose_name='Участники', through='ProjectMembers', related_name='projects')
     created_at = models.DateTimeField(verbose_name='Создан', auto_now_add=True)
