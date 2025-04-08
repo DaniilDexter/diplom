@@ -1,123 +1,104 @@
 <script setup lang="ts">
+import { ref } from 'vue';
+import { useApi } from '@/composables/useApi';
+import { vAutoAnimate } from '@formkit/auto-animate/vue'
+
 
 const user = ref({
   email: '',
   password: '',
-})
+});
 
 const regist = ref({
   email: '',
   username: '',
   password: '',
-})
+});
 
-const isLoginActive = ref(true)
-
+// Убедитесь, что запросы выполняются только по запросу
 const { data: loginData, error: loginError, execute: executeLogin } = useApi('/auth/login/', {
   method: 'POST',
   body: user.value,
-  immediate: false
-})
+  watch: false,
+  immediate: false,  // Запрос не выполняется автоматически
+});
 
 const { data: registerData, error: registerError, execute: executeRegister } = useApi('/auth/register/', {
   method: 'POST',
   body: regist.value,
-  immediate: false
-})
+  watch: false,
+  immediate: false,  // Запрос не выполняется автоматически
+});
 
-function login() {
-  executeLogin().then(() => {
-    if (loginData.value && loginData.value.access) {
-      // Сохраняем access-токен в куки
-      const authT = useCookie('authT', {
-        maxAge: 60 * 60 * 24 * 7, // 7 дней (можно настроить под ваш токен)
-        sameSite: 'strict',
-        secure: true // если используете HTTPS
-      })
-      authT.value = loginData.value.access
-      
-      console.log('Токен сохранен:', authT.value)
-      console.log('Данные пользователя:', loginData.value.data)
-      
-      // Перенаправляем пользователя
-      navigateTo('/')
+// Функция для логина
+async function login() {
+  try {
+    console.log('Запрос на логин');
+    await executeLogin();  // Запрос выполняется только при вызове этой функции
+    if (loginData.value?.access) {
+      const authT = useCookie('authT', { maxAge: 60 * 60 * 24 * 7, sameSite: 'strict', secure: true });
+      authT.value = loginData.value.access;
+      navigateTo('/');
     }
-  }).catch((error) => {
-    console.error('Ошибка входа:', error)
-    // Можно показать ошибку пользователю
-  })
+  } catch (error) {
+    console.error('Ошибка входа:', error);
+  }
 }
 
-function register() {
-  executeRegister().then(() => {
-    if (registerData.value && registerData.value.access) {
-      // Сохраняем access-токен в куки
-      const authT = useCookie('authT', {
-        maxAge: 60 * 60 * 24 * 7, // 7 дней (можно настроить под ваш токен)
-        sameSite: 'strict',
-        secure: true // если используете HTTPS
-      })
-      authT.value = registerData.value.access
-      
-      console.log('Токен сохранен:', authT.value)
-      console.log('Данные пользователя:', registerData.value.data)
-      
-      // Перенаправляем пользователя
-      navigateTo('/')
+// Функция для регистрации
+async function register() {
+  try {
+    console.log('Запрос на регистрацию');
+    await executeRegister();  // Запрос выполняется только при вызове этой функции
+    if (registerData.value?.access) {
+      const authT = useCookie('authT', { maxAge: 60 * 60 * 24 * 7, sameSite: 'strict', secure: true });
+      authT.value = registerData.value.access;
+      navigateTo('/');
     }
-  }).catch((error) => {
-    console.error('Ошибка входа:', error)
-    // Можно показать ошибку пользователю
-  })
-}
-
-function toggleForms() {
-  isLoginActive.value = !isLoginActive.value
+  } catch (error) {
+    console.error('Ошибка регистрации:', error);
+  }
 }
 </script>
 
 <template>
-  <main class="main">
-    <div class="auth-container">
-      <!-- Форма логина -->
-      <div v-if="isLoginActive" class="form-container">
-        <form @submit.prevent="login" class="form">
-          <h2>Login</h2>
-          <input v-model="user.email" type="text" placeholder="Email" required />
-          <input v-model="user.password" type="password" placeholder="Пароль" required />
-          <button type="submit">Login</button>
-        </form>
-      </div>
+  <div v-auto-animate class="max-w-md mx-auto p-6 bg-white dark:bg-gray-900 rounded-lg shadow-md">
+    <Tabs default-value="login" class="w-full">
+      <TabsList class="grid w-full grid-cols-2 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
+        <TabsTrigger value="login" class="data-[state=active]:bg-sky-500 data-[state=active]:text-white">Вход</TabsTrigger>
+        <TabsTrigger value="register" class="data-[state=active]:bg-sky-500 data-[state=active]:text-white">Регистрация</TabsTrigger>
+      </TabsList>
       
-      <!-- Форма регистрации -->
-      <div v-if="!isLoginActive" class="form-container">
-        <form @submit.prevent="register" class="form">
-          <h2>Register</h2>
-          <input v-model="regist.username" type="text" placeholder="Имя пользователя" required />
-          <input v-model="regist.email" type="email" placeholder="Email" required />
-          <input v-model="regist.password" type="password" placeholder="Пароль" required />
-          <button type="submit">Register</button>
+      <TabsContent value="login">
+        <form @submit.prevent="login" class="space-y-4 mt-4">
+          <Label>Email</Label>
+          <Input v-model="user.email" type="email" placeholder="Введите email" required />
+          
+          <Label>Пароль</Label>
+          <Input v-model="user.password" type="password" placeholder="Введите пароль" required />
+          
+          <Button type="submit" class="w-full bg-sky-500 hover:bg-sky-600">Войти</Button>
+          <p v-if="loginError" class="text-red-500 text-sm">
+            Ошибка: {{ loginError?.data?.error }}
+          </p>
         </form>
-      </div>
+      </TabsContent>
       
-      <!-- Переключение между формами -->
-      <div
-        :class="['switch-block', isLoginActive ? 'switch-left' : 'switch-right']"
-      >
-        <div class="switch-content">
-          <h2>{{ isLoginActive ? 'Already have an account? Login' : "Don't have an account? Register" }}</h2>
-          <button @click="toggleForms">Switch</button>
-        </div>
-      </div>
-    </div>
-  </main>
+      <TabsContent value="register">
+        <form @submit.prevent="register" class="space-y-4 mt-4">
+          <Label>Email</Label>
+          <Input v-model="regist.email" type="email" placeholder="Введите email" required />
+          
+          <Label>Имя пользователя</Label>
+          <Input v-model="regist.username" type="text" placeholder="Введите имя пользователя" required />
+          
+          <Label>Пароль</Label>
+          <Input v-model="regist.password" type="password" placeholder="Введите пароль" required />
+          
+          <Button type="submit" class="w-full bg-sky-500 hover:bg-sky-600">Зарегистрироваться</Button>
+          <p v-if="registerError" class="text-red-500 text-sm">Ошибка: {{ registerError }}</p>
+        </form>
+      </TabsContent>
+    </Tabs>
+  </div>
 </template>
-
-
-
-<style scoped>
-.error {
-  color: red;
-  margin-top: 10px;
-}
-</style>

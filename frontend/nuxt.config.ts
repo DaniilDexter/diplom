@@ -5,15 +5,6 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
   css: ['~/assets/css/tailwind.css'],
   modules: ['@nuxt/icon', 'shadcn-nuxt'],
-  fonts: {
-    google: {
-      families: ['Inter', 'Manrope']
-    }
-  },
-  tailwindcss: {
-    configPath: '~/tailwind.config.js'
-  },
-
   vite: {
     plugins: [
       tailwindcss(),
@@ -26,5 +17,10 @@ export default defineNuxtConfig({
      * @default "./components/ui"
      */
     componentDir: './components/ui'
-  }
+  },
+  runtimeConfig: {
+    public: {
+      baseURL: 'http://127.0.0.1:8000/api/v1/',
+    }
+  },
 })
