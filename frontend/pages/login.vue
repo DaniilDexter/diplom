@@ -45,7 +45,6 @@ async function login() {
   }
 }
 
-// Функция для регистрации
 async function register() {
   try {
     console.log('Запрос на регистрацию');
@@ -96,7 +95,7 @@ async function register() {
           <Input v-model="regist.password" type="password" placeholder="Введите пароль" required />
           
           <Button type="submit" class="w-full bg-sky-500 hover:bg-sky-600">Зарегистрироваться</Button>
-          <p v-if="registerError" class="text-red-500 text-sm">Ошибка: {{ registerError }}</p>
+          <p v-if="registerError" class="text-red-500 text-sm">Ошибка: {{ registerError?.data?.error }}</p>
         </form>
       </TabsContent>
     </Tabs>

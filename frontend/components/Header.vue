@@ -31,6 +31,13 @@ import { navigationMenuTriggerStyle } from '@/components/ui/navigation-menu'
             </NavigationMenuLink>
           </NuxtLink>
         </NavigationMenuItem>
+        <NavigationMenuItem>
+          <NuxtLink v-slot="{ isActive, href, navigate }" to="/profile" custom>
+            <NavigationMenuLink :active="isActive" :href :class="navigationMenuTriggerStyle()" @click="navigate">
+              Profile
+            </NavigationMenuLink>
+          </NuxtLink>
+        </NavigationMenuItem>
       </NavigationMenuList>
     </NavigationMenu>    
   </header>
