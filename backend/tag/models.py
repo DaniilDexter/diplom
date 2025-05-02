@@ -1,12 +1,12 @@
+# tag/models.py (если у вас есть приложение tag)
 from django.db import models
+from project.models import ProjectBasedModel
 
-class Tag(models.Model):
-    name = models.CharField(verbose_name='Название', max_length=50, unique=True)
-    description = models.TextField(verbose_name='Описание', blank=True, null=True)
-
-    def __str__(self):
-        return self.name
+class Tag(ProjectBasedModel):
+    """Теги, специфичные для проекта"""
+    color = models.CharField(max_length=7, default='#808080')  # HEX цвет
     
     class Meta:
         verbose_name = 'Тег'
         verbose_name_plural = 'Теги'
+        unique_together = [['project', 'name']]

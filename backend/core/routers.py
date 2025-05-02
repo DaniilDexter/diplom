@@ -14,7 +14,7 @@ router = DefaultRouter()
 
 router.register('auth', UserViewSet)
 router.register('role', UserRoleViewSet)
-router.register('board', BoardViewSet)
+router.register('boards', BoardViewSet, basename='board')
 router.register('column', ColumnViewSet)
 router.register('comment', CommentViewSet)
 router.register('priority', PriorityViewSet)

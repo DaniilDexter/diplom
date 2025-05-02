@@ -63,17 +63,37 @@ class UserViewSet(ModelViewSet):
     def remove_friend(self, request):
         username = request.data.get('username')
         if not username:
-            return Response({'error': 'Поле username обязательно'}, status=400)
+            return Response(
+                {'error': 'Поле username обязательно'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         try:
             friend = User.objects.get(username=username)
         except User.DoesNotExist:
-            return Response({'error': 'Пользователь не найден'}, status=404)
+            return Response(
+                {'error': 'Пользователь не найден'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
         
+        # Проверяем, есть ли пользователь в друзьях
+        if not request.user.friends.filter(id=friend.id).exists():
+            return Response(
+                {'error': 'Этот пользователь не находится у вас в друзьях'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Удаляем из друзей
         request.user.friends.remove(friend)
         friend.friends.remove(request.user)
         
-        return Response({'message': f'Пользователь {username} удален из друзей'})
+        # Получаем обновлённый список друзей
+        current_friends = request.user.friends.all()
+        
+        return Response({
+            'message': f'Пользователь {username} удалён из друзей',
+            'friends': UserSerializer(current_friends, many=True, context={'request': request}).data
+        }, status=status.HTTP_200_OK)
     
     @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated])
     def search(self, request):
@@ -124,7 +144,10 @@ class UserViewSet(ModelViewSet):
         friend.friends.add(request.user)
         
         return Response(
-            {'message': f'Пользователь {username} добавлен в друзья'},
+            {
+                'message': f'Пользователь {username} добавлен в друзья',
+                'friend': UserSerializer(friend, context={'request': request}).data
+            },
             status=status.HTTP_200_OK
         )
 

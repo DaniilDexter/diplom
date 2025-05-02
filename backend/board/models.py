@@ -1,14 +1,14 @@
+# board/models.py
 from django.db import models
 from project.models import Project
 
 class Board(models.Model):
-    project = models.ForeignKey(Project, verbose_name='Проект', on_delete=models.CASCADE, related_name='boards')
-    name = models.CharField(verbose_name='Название', max_length=100)
-    created_at = models.DateTimeField(verbose_name='Создан', auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.name} в {self.project.name}"
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name='boards')
+    name = models.CharField(max_length=100)
+    is_sprint = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
     
     class Meta:
         verbose_name = 'Доска'
         verbose_name_plural = 'Доски'
+        unique_together = [['project', 'name']]

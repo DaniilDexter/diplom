@@ -28,3 +28,13 @@ class ProjectMembers(models.Model):
     class Meta:
         verbose_name = 'Участник проекта'
         verbose_name_plural = 'Участники проекта'
+
+class ProjectBasedModel(models.Model):
+    """Абстрактная модель для сущностей, принадлежащих проекту"""
+    project = models.ForeignKey('project.Project', on_delete=models.CASCADE, related_name='%(class)ss')
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True, null=True)
+    is_default = models.BooleanField(default=False)  # Флаг для базовых элементов
+    
+    class Meta:
+        abstract = True

@@ -1,9 +1,8 @@
 <script setup lang="ts">
-const { data: usertData } = await useApi(`/auth/me/`, {
-  method: "GET",
-});
 
-const user = computed(() => usertData.value?.data || {});
+const userStore = useUserStore()
+
+const {user} =storeToRefs(userStore)
 
 const features = [
   {

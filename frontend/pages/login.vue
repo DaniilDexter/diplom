@@ -2,9 +2,13 @@
 import { ref } from 'vue';
 import { useApi } from '@/composables/useApi';
 import { vAutoAnimate } from '@formkit/auto-animate/vue'
+import { useUserStore } from '~/stores/user';
 
+const userStore = useUserStore()
 
-const user = ref({
+const { user } = storeToRefs(userStore)
+
+const userLogin = ref({
   email: '',
   password: '',
 });
@@ -18,7 +22,7 @@ const regist = ref({
 // Убедитесь, что запросы выполняются только по запросу
 const { data: loginData, error: loginError, execute: executeLogin } = useApi('/auth/login/', {
   method: 'POST',
-  body: user.value,
+  body: userLogin.value,
   watch: false,
   immediate: false,  // Запрос не выполняется автоматически
 });
@@ -36,8 +40,9 @@ async function login() {
     console.log('Запрос на логин');
     await executeLogin();  // Запрос выполняется только при вызове этой функции
     if (loginData.value?.access) {
-      const authT = useCookie('authT', { maxAge: 60 * 60 * 24 * 7, sameSite: 'strict', secure: true });
+      const authT = useCookie('authT', { maxAge: 60 * 60 * 24 * 365, sameSite: 'strict', secure: true });
       authT.value = loginData.value.access;
+      user.value = loginData.value.data
       navigateTo('/');
     }
   } catch (error) {
@@ -52,6 +57,7 @@ async function register() {
     if (registerData.value?.access) {
       const authT = useCookie('authT', { maxAge: 60 * 60 * 24 * 7, sameSite: 'strict', secure: true });
       authT.value = registerData.value.access;
+      user.value = loginData.value.data
       navigateTo('/');
     }
   } catch (error) {
@@ -71,10 +77,10 @@ async function register() {
       <TabsContent value="login">
         <form @submit.prevent="login" class="space-y-4 mt-4">
           <Label>Email</Label>
-          <Input v-model="user.email" type="email" placeholder="Введите email" required />
+          <Input v-model="userLogin.email" type="email" placeholder="Введите email" required />
           
           <Label>Пароль</Label>
-          <Input v-model="user.password" type="password" placeholder="Введите пароль" required />
+          <Input v-model="userLogin.password" type="password" placeholder="Введите пароль" required />
           
           <Button type="submit" class="w-full bg-sky-500 hover:bg-sky-600">Войти</Button>
           <p v-if="loginError" class="text-red-500 text-sm">

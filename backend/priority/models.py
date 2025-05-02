@@ -1,12 +1,13 @@
 from django.db import models
+from project.models import ProjectBasedModel
 
-class Priority(models.Model):
-    name = models.CharField(verbose_name='Название', max_length=100, unique=True)
-    description = models.TextField(verbose_name='Описание', blank=True, null=True)
-
-    def __str__(self):
-        return self.name
+class Priority(ProjectBasedModel):
+    """Приоритеты, специфичные для проекта"""
+    color = models.CharField(max_length=7, default='#808080')  # HEX цвет
+    order = models.IntegerField(default=0)  # Порядок отображения
     
     class Meta:
         verbose_name = 'Приоритет'
         verbose_name_plural = 'Приоритеты'
+        unique_together = [['project', 'name']]
+        ordering = ['order']

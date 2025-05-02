@@ -1,13 +1,14 @@
 from rest_framework import serializers
-
 from .models import Board 
-from project.serializers import ProjectSerializer
-
+from column.serializers import ColumnSerializer
 
 class BoardSerializer(serializers.ModelSerializer):
-
-    project = ProjectSerializer()
-
+    project_id = serializers.IntegerField(write_only=True)
+    columns = ColumnSerializer(many=True, read_only=True)
+    
     class Meta:
         model = Board
-        fields = '__all__'
+        fields = ['id', 'project_id', 'name', 'created_at', 'columns']
+        extra_kwargs = {
+            'project_id': {'required': True}
+        }

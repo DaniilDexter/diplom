@@ -27,13 +27,11 @@ const {
   immediate: false
 })
 
-const { 
-  data: friends, 
-  execute: refreshFriends 
-} = useApi('/auth/friends/', {
-  method: 'GET',
-  immediate: true
-})
+const userStore = useUserStore()
+
+const { userFriends } = storeToRefs(userStore)
+
+await userStore.fetchFriends()
 
 const addFriendApi = useApi('/auth/add_friend/', {
   method: 'POST',
@@ -64,7 +62,7 @@ const addFriend = async (username: string) => {
     messageType.value = 'success'
     resetMessage()
     
-    await refreshFriends()
+    userFriends.value.push(addFriendApi.data.value.friend)
     selectedUser.value.username = ''
     if (searchResults.value) {
       searchResults.value = searchResults.value.filter(u => u.username !== username)
@@ -85,7 +83,7 @@ const removeFriend = async (username: string) => {
     messageType.value = 'success'
     resetMessage()
     
-    await refreshFriends()
+    userFriends.value = (removeFriendApi.data.value.friends)
     selectedUser.value.username = ''
   } catch (error) {
     message.value = error.data?.message || 'Не удалось удалить из друзей'
@@ -118,7 +116,7 @@ const removeFriend = async (username: string) => {
         </TabsTrigger>
         <TabsTrigger value="friends">
           <Icon name="lucide:users" class="mr-2 size-4" />
-          Друзья ({{ friends?.length || 0 }})
+          Друзья ({{ userFriends?.length || 0 }})
         </TabsTrigger>
       </TabsList>
       
@@ -144,7 +142,7 @@ const removeFriend = async (username: string) => {
           >
             <div class="flex items-center gap-3">
               <Avatar>
-                <AvatarImage :src="user.photo" />
+                <AvatarImage :src="user.photo || ''" />
                 <AvatarFallback>
                   {{ user.username.charAt(0).toUpperCase() }}
                 </AvatarFallback>
@@ -166,15 +164,15 @@ const removeFriend = async (username: string) => {
       </TabsContent>
       
       <TabsContent value="friends" class="space-y-4">
-        <div v-if="friends?.length" class="space-y-2">
+        <div v-if="userFriends?.length" class="space-y-2">
           <div
-            v-for="friend in friends"
+            v-for="friend in userFriends"
             :key="friend.id"
             class="flex items-center justify-between p-3 border rounded-lg"
           >
             <div class="flex items-center gap-3">
               <Avatar>
-                <AvatarImage :src="friend.photo" />
+                <AvatarImage :src="friend.photo || ''" />
                 <AvatarFallback>
                   {{ friend.username.charAt(0).toUpperCase() }}
                 </AvatarFallback>

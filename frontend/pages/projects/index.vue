@@ -1,7 +1,9 @@
 <script setup lang="ts">
-const { data: projects, refresh: refreshProjects } = await useApi('/project/', {
-  method: "GET",
-});
+const projectStore = useProjectStore()
+
+await projectStore.fetchProjects()
+
+const {projects} = storeToRefs(projectStore)
 
 const newProject = ref({
   name: "",
@@ -11,9 +13,11 @@ const newProject = ref({
 
 const selectedUsers = ref([])
 
-const { data: friends } = await useApi('/auth/friends/', {
-  method: "GET",
-})
+const userStore = useUserStore()
+
+await userStore.fetchFriends()
+
+const { userFriends } = storeToRefs(userStore)
 
 const { data: projectData, error: projectError, execute: executeCreateProject } = useApi('/project/create-project/', {
   method: 'POST',
@@ -39,9 +43,8 @@ async function createProject() {
     });
 
     if (projectData.value?.id) {
-      refreshProjects()
+      projects.value.push(projectData.value)
       
-      // refreshNuxtData('projects'); // если используете useAsyncData
     }
   } catch (error) {
     console.error('Ошибка создания проекта:', error);
@@ -56,12 +59,12 @@ async function createProject() {
     <h1 class="text-3xl font-bold mb-6">Мои проекты</h1>
 
     <Sheet ref="sheet">
-      <SheetTrigger>
+      <SheetTrigger as-Child>
       <Button class="mb-6 flex items-center">
         <Icon name="lucide:plus" class="size-4 mr-2" /> Новый проект
       </Button>
       </SheetTrigger>
-      <SheetContent>
+      <SheetContent >
         <SheetHeader>
           <SheetTitle>Создать новый проект</SheetTitle>
         </SheetHeader>
@@ -93,7 +96,7 @@ async function createProject() {
 
               <ComboboxGroup>
                 <ComboboxItem
-                  v-for="friend in friends"
+                  v-for="friend in userFriends"
                   :key="friend.id"
                   :value="friend"
                 >
@@ -120,7 +123,11 @@ async function createProject() {
     <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
       <Card v-for="project in projects" :key="project.id">
         <CardHeader>
-          <CardTitle>{{ project.name }}</CardTitle>
+          <CardTitle>
+            <NuxtLink :to="`/projects/${project.id}/boards`">
+              {{ project.name }}
+            </NuxtLink>
+          </CardTitle>
           <p class="text-muted-foreground text-sm">{{ project.description }}</p>
         </CardHeader>
         <CardContent>
@@ -128,7 +135,7 @@ async function createProject() {
           <ul class="text-sm">
             <li v-for="member in project.members" :key="member.id" class="flex items-center gap-2">
               <Icon name="lucide:user" class="size-4 text-sky-500" />
-              {{ member.username }}
+              {{ member.user.username }}
             </li>
           </ul>
           <p class="text-xs text-gray-500">Ключ: {{ project.key }}</p>
