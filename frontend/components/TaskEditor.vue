@@ -26,14 +26,11 @@ const toApiDate = (date: string | Date | CalendarDate | null | undefined) => {
     dateObj = new Date(date);
   }
 
-  // Получаем локальную дату, игнорируя время
   if (dateObj instanceof Date && !isNaN(dateObj.getTime())) {
-    // Получаем год, месяц и день в локальной временной зоне
     const year = dateObj.getFullYear();
     const month = String(dateObj.getMonth() + 1).padStart(2, "0"); // Месяцы в JS начинаются с 0
     const day = String(dateObj.getDate()).padStart(2, "0");
 
-    // Возвращаем дату в нужном формате
     return `${year}-${month}-${day}`;
   }
 
@@ -96,7 +93,7 @@ const isReportDialogOpen = ref(false);
 const isCommentDialogOpen = ref(false);
 const newComment = ref({
   content: "",
-  is_approved: false, // Добавляем свойство для состояния одобрения
+  is_approved: false,
 });
 const reportData = ref({
   comment: "",
@@ -104,7 +101,6 @@ const reportData = ref({
   file: null as File | null,
 });
 
-// Обработчики для файлов
 const handleImageUpload = (e: Event) => {
   const input = e.target as HTMLInputElement;
   if (input.files?.length) {
@@ -124,58 +120,103 @@ const isAddingSubtask = ref(false);
 const isEditingSubtask = ref(false);
 const currentSubtask = ref<any>(null);
 
+const taskApiUrl = computed(() => selectedTask.value ? `/task/${selectedTask.value.id}/` : null);
+const commentApiUrl = computed(() => selectedTask.value ? `/task/${selectedTask.value.id}/add-comment/` : null);
+const reportApiUrl = computed(() => selectedTask.value ? `/task/${selectedTask.value.id}/update-report/` : null);
+const subtaskCreateApiUrl = computed(() => selectedTask.value ? `/task/${selectedTask.value.id}/add-subtask/` : null);
+const subtaskUpdateApiUrl = computed(() => selectedTask.value ? `/task/${selectedTask.value.id}/update-subtask/` : null);
+const subtaskDeleteApiUrl = computed(() => selectedTask.value ? `/task/${selectedTask.value.id}/delete-subtask/` : null);
+
+const taskPayload = ref();
+const commentPayload = ref();
+const reportPayload = ref<FormData>();
+const subtaskCreatePayload = ref();
+const subtaskUpdatePayload = ref();
+const subtaskDeletePayload = ref();
+
+// 2. API клиенты
+const taskApi = useApi(taskApiUrl, {
+  method: "PATCH",
+  body: taskPayload,
+  watch: false,
+  immediate: false
+});
+
+const commentApi = useApi(commentApiUrl, {
+  method: "POST",
+  body: commentPayload,
+  watch: false,
+  immediate: false
+});
+
+const reportApi = useApi(reportApiUrl, {
+  method: "POST",
+  body: reportPayload,
+  headers: { "Content-Type": "multipart/form-data" },
+  watch: false,
+  immediate: false
+});
+
+const subtaskCreateApi = useApi(subtaskCreateApiUrl, {
+  method: "POST",
+  body: subtaskCreatePayload,
+  watch: false,
+  immediate: false
+});
+
+const subtaskUpdateApi = useApi(subtaskUpdateApiUrl, {
+  method: "PATCH",
+  body: subtaskUpdatePayload,
+  watch: false,
+  immediate: false
+});
+
+const subtaskDeleteApi = useApi(subtaskDeleteApiUrl, {
+  method: "DELETE",
+  body: subtaskDeletePayload,
+  watch: false,
+  immediate: false
+});
+
+// 3. Основные методы
 const updateTask = async () => {
   if (timer.value.isRunning) {
-    toast.warning("Невозможно сохранить задачу", {
-      description: "Пожалуйста, остановите таймер перед сохранением задачи.",
-    });
+    toast.warning("Остановите таймер перед сохранением");
     return;
   }
 
   if (!selectedTask.value) return;
 
   try {
-    const { data } = await useApi(`/task/${selectedTask.value.id}/`, {
-      method: "PATCH",
-      body: {
-        title: selectedTask.value.title,
-        description: selectedTask.value.description,
-        assigned_to_id: selectedMember.value?.id || null,
-        priority_id: selectedPriority.value?.id || null,
-        due_date: toApiDate(selectedTask.value.due_date),
-        tags_ids: selectedTags.value.map((tag) => tag.id),
-      },
-    });
+    taskPayload.value = {
+      title: selectedTask.value.title,
+      description: selectedTask.value.description,
+      assigned_to_id: selectedMember.value?.id || null,
+      priority_id: selectedPriority.value?.id || null,
+      due_date: toApiDate(selectedTask.value.due_date),
+      tags_ids: selectedTags.value.map(tag => tag.id),
+    };
 
-    if (data.value) {
-      // Обновляем задачу в хранилище
-      const updatedTask = {
-        ...data.value,
-        due_date: data.value.due_date ? new Date(data.value.due_date) : null
-      };
-      projectStore.updateTaskInStore(updatedTask);
-      
-      isTaskSheetOpen.value = false;
-      toast.success("Задача успешно обновлена");
-    }
+    await taskApi.execute();
+    projectStore.updateSelectedTask();
+    isTaskSheetOpen.value = false;
+    toast.success("Задача обновлена");
   } catch (error) {
     console.error("Ошибка при обновлении задачи:", error);
     toast.error("Не удалось обновить задачу");
+  } finally {
+    taskPayload.value = null;
   }
 };
 
-// Добавление комментария
 const addComment = async () => {
   if (!newComment.value.content.trim() || !selectedTask.value) return;
 
   try {
-    await useApi(`/task/${selectedTask.value.id}/add-comment/`, {
-      method: "POST",
-      body: newComment.value,
-    });
-
-    projectStore.updateSelectedTask()
+    commentPayload.value = { ...newComment.value };
+    await commentApi.execute();
     
+    projectStore.updateSelectedTask();
     newComment.value = { content: "", is_approved: false };
     isCommentDialogOpen.value = false;
     toast.success("Комментарий добавлен");
@@ -185,57 +226,49 @@ const addComment = async () => {
   }
 };
 
-// Отправка отчета
 const submitReport = async () => {
   if (!selectedTask.value) return;
 
-  const formData = new FormData();
-  formData.append("comment", reportData.value.comment);
-  if (reportData.value.image) formData.append("image", reportData.value.image);
-  if (reportData.value.file) formData.append("file", reportData.value.file);
-
   try {
-    const { data } = await useApi(`/task/${selectedTask.value.id}/update-report/`, {
-      method: "POST",
-      body: formData,
-      headers: {
-        "Content-Type": "multipart/form-data",
-      },
-    });
+    reportPayload.value = new FormData();
+    reportPayload.value.append("comment", reportData.value.comment);
+    if (reportData.value.image) reportPayload.value.append("image", reportData.value.image);
+    if (reportData.value.file) reportPayload.value.append("file", reportData.value.file);
+
+    await reportApi.execute();
     
-    projectStore.updateSelectedTask()
-    
+    projectStore.updateSelectedTask();
     reportData.value = { comment: "", image: null, file: null };
     isReportDialogOpen.value = false;
     toast.success("Отчет отправлен");
   } catch (error) {
     console.error("Ошибка при отправке отчёта:", error);
     toast.error("Не удалось отправить отчёт");
+  } finally {
+    reportPayload.value = undefined;
   }
 };
 
-// Методы для подзадач
+// 4. Методы для подзадач
 const addSubtask = async () => {
   if (!newSubtaskTitle.value.trim() || !selectedTask.value) return;
 
   try {
     isAddingSubtask.value = true;
-    const { data } = await useApi(`/task/${selectedTask.value.id}/add-subtask/`, {
-      method: "POST",
-      body: { title: newSubtaskTitle.value },
-    });
-    
-    if (data.value) {
-      projectStore.updateSelectedTask()
+    subtaskCreatePayload.value = { title: newSubtaskTitle.value };
+    await subtaskCreateApi.execute();
+
+    if (subtaskCreateApi.data.value?.id) {
+      projectStore.updateSelectedTask();
+      newSubtaskTitle.value = "";
+      toast.success("Подзадача добавлена");
     }
-    
-    newSubtaskTitle.value = "";
-    toast.success("Подзадача добавлена");
   } catch (error) {
     console.error("Ошибка при добавлении подзадачи:", error);
     toast.error("Не удалось добавить подзадачу");
   } finally {
     isAddingSubtask.value = false;
+    subtaskCreatePayload.value = null;
   }
 };
 
@@ -244,19 +277,14 @@ const updateSubtask = async () => {
 
   try {
     isEditingSubtask.value = true;
-    const { data } = await useApi(`/task/${selectedTask.value.id}/update-subtask/`, {
-      method: "PATCH",
-      body: {
-        id: currentSubtask.value.id,
-        title: currentSubtask.value.title,
-        is_completed: currentSubtask.value.is_completed,
-      },
-    });
-    
-    if (data.value) {
-      projectStore.updateSelectedTask()
-    }
-    
+    subtaskUpdatePayload.value = {
+      id: currentSubtask.value.id,
+      title: currentSubtask.value.title,
+      is_completed: currentSubtask.value.is_completed,
+    };
+
+    await subtaskUpdateApi.execute();
+    projectStore.updateSelectedTask();
     currentSubtask.value = null;
     toast.success("Подзадача обновлена");
   } catch (error) {
@@ -264,6 +292,7 @@ const updateSubtask = async () => {
     toast.error("Не удалось обновить подзадачу");
   } finally {
     isEditingSubtask.value = false;
+    subtaskUpdatePayload.value = null;
   }
 };
 
@@ -271,41 +300,33 @@ const deleteSubtask = async (subtaskId: number) => {
   if (!selectedTask.value) return;
 
   try {
-    await useApi(`/task/${selectedTask.value.id}/delete-subtask/`, {
-      method: "DELETE",
-      body: { id: subtaskId },
-    });
-    
-    projectStore.updateSelectedTask()
+    subtaskDeletePayload.value = { id: subtaskId };
+    await subtaskDeleteApi.execute();
+    projectStore.updateSelectedTask();
     toast.success("Подзадача удалена");
   } catch (error) {
     console.error("Ошибка при удалении подзадачи:", error);
     toast.error("Не удалось удалить подзадачу");
+  } finally {
+    subtaskDeletePayload.value = null;
   }
 };
 
 const toggleSubtaskCompletion = async (subtask: any, event: Event) => {
   event.stopPropagation();
-  const updatedSubtask = {
-    ...subtask,
-    is_completed: !subtask.is_completed,
-  };
 
   try {
-    const { data } = await useApi(`/task/${selectedTask.value.id}/update-subtask/`, {
-      method: "PATCH",
-      body: {
-        id: updatedSubtask.id,
-        is_completed: updatedSubtask.is_completed,
-      },
-    });
-    
-    if (data.value) {
-      projectStore.updateSelectedTask()
-    }
+    subtaskUpdatePayload.value = {
+      id: subtask.id,
+      is_completed: !subtask.is_completed
+    };
+    await subtaskUpdateApi.execute();
+    projectStore.updateSelectedTask();
   } catch (error) {
     console.error("Ошибка при обновлении подзадачи:", error);
     toast.error("Не удалось обновить статус подзадачи");
+  } finally {
+    subtaskUpdatePayload.value = null;
   }
 };
 </script>

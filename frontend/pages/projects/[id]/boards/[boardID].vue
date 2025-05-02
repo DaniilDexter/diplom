@@ -54,6 +54,23 @@ const addColumn = async () => {
   }
 };
 
+const selectedColumnId = ref<string | null>(null);
+const selectedTaskId = ref<string | null>(null);
+
+const addTaskApiUrl = computed(() => 
+  selectedColumnId.value ? `/task/add-task-to-column/${selectedColumnId.value}/` : null
+);
+
+const addTaskPayload = ref()
+
+const addTaskApi = useApi(addTaskApiUrl, {
+  method: "POST",
+  body: addTaskPayload,
+  watch: false,
+  immediate: false
+});
+
+// 3. Обновленная функция addTask
 const addTask = async (columnId: string) => {
   const title = newTaskTitles.value[columnId]?.trim();
   if (!title) return;
@@ -62,28 +79,31 @@ const addTask = async (columnId: string) => {
     const column = localColumns.value.find((col) => col.id === columnId);
     const order = column ? column.tasks.length : 0;
     
+    // Устанавливаем ID колонки для URL
+    selectedColumnId.value = columnId;
     isAddingTasks.value = { ...isAddingTasks.value, [columnId]: true };
     
-    const { data } = await useApi(`/task/add-task-to-column/${columnId}/`, {
-      method: "POST",
-      body: {
-        title: title,
-        order: order
-      }
-    });
+    // Устанавливаем тело запроса и выполняем
+    addTaskPayload.value = {
+      title: title,
+      order: order,
+    }
+    await addTaskApi.execute();
 
     newTaskTitles.value = { ...newTaskTitles.value, [columnId]: "" };
     
-    if (data.value?.id) {
+    if (addTaskApi.data.value?.id) {
       const columnIndex = currentBoard.value.columns.findIndex(col => col.id === columnId);
       if (columnIndex !== -1) {
-        currentBoard.value.columns[columnIndex].tasks.push(data.value);
+        currentBoard.value.columns[columnIndex].tasks.push(addTaskApi.data.value);
       }
     }
   } catch (error) {
     console.error("Ошибка при добавлении задачи:", error);
     toast.error("Не удалось добавить задачу");
   } finally {
+    selectedColumnId.value = null;
+    addTaskPayload.value = null;
     isAddingTasks.value = { ...isAddingTasks.value, [columnId]: false };
   }
 };
@@ -91,26 +111,30 @@ const addTask = async (columnId: string) => {
 const columnOrderPayload = ref<{task_order: string[]} | null>(null);
 const taskUpdatePayload = ref<{column_id: string, order: number} | null>(null);
 
-const updateColumnOrderApi = (columnId: string) => useApi(
-  `/task/update-column-order/${columnId}/`, 
-  {
-    method: "POST",
-    body: columnOrderPayload,
-    watch: false,
-    immediate: false
-  }
+const columnOrderApiUrl = computed(() => 
+  selectedColumnId.value ? `/task/update-column-order/${selectedColumnId.value}/` : null
 );
 
-const updateTaskColumnApi = (taskId: string) => useApi(
-  `/task/${taskId}/update-column/`, 
-  {
-    method: "PATCH",
-    body: taskUpdatePayload,
-    watch: false,
-    immediate: false
-  }
+const taskColumnApiUrl = computed(() => 
+  selectedTaskId.value ? `/task/${selectedTaskId.value}/update-column/` : null
 );
 
+// 2. Создаем API клиенты
+const columnOrderApi = useApi(columnOrderApiUrl, {
+  method: "POST",
+  body: columnOrderPayload,
+  watch: false,
+  immediate: false
+});
+
+const taskColumnApi = useApi(taskColumnApiUrl, {
+  method: "PATCH",
+  body: taskUpdatePayload,
+  watch: false,
+  immediate: false
+});
+
+// 3. Обновленная функция onTaskDragEnd
 const onTaskDragEnd = async (evt: any) => {
   if (!evt.moved && !evt.added) return;
 
@@ -119,33 +143,38 @@ const onTaskDragEnd = async (evt: any) => {
   const newIndex = event.newIndex;
 
   // Находим новую колонку
-  const newColumn = localColumns.value.find((col) =>
-    col.tasks.some((t) => t.id === task.id)
+  const newColumn = localColumns.value.find(col => 
+    col.tasks.some(t => t.id === task.id)
   );
   if (!newColumn) return;
 
   try {
-    // 1. Обновляем порядок задач в колонке
-    columnOrderPayload.value = {
-      task_order: newColumn.tasks.map((t) => t.id)
-    };
+    // Устанавливаем ID для URL
+    selectedColumnId.value = newColumn.id;
     
-    await updateColumnOrderApi(newColumn.id).execute();
+    // 1. Обновляем порядок задач
+    columnOrderPayload.value = {
+      task_order: newColumn.tasks.map(t => t.id)
+    };
+    await columnOrderApi.execute();
 
+    // Если задача перемещена между колонками
     if (evt.added) {
+      selectedTaskId.value = task.id;
       taskUpdatePayload.value = {
         column_id: newColumn.id,
         order: newIndex
       };
-      
-      await updateTaskColumnApi(task.id).execute();
+      await taskColumnApi.execute();
     }
 
   } catch (error) {
     console.error("Ошибка при обновлении задач:", error);
     toast.error("Не удалось обновить задачу");
   } finally {
-    // Сбрасываем payload
+    // Сбрасываем состояния
+    selectedColumnId.value = null;
+    selectedTaskId.value = null;
     columnOrderPayload.value = null;
     taskUpdatePayload.value = null;
   }
@@ -179,7 +208,7 @@ const handleTaskClick = (task: any) => {
     </div>
     <div v-if="projectStore.selectedTask" class="page-timer">
       <span>Текущая задача: {{ projectStore.selectedTask.title }}</span>
-      <span>Время: {{ projectStore.formatTime(projectStore.timer.total) }}</span>
+      <span>Время: {{ projectStore.formatTime(projectStore.timer.elapsed) }}</span>
     </div>
     <ClientOnly>
       <TransitionGroup

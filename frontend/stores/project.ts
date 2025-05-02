@@ -22,8 +22,23 @@ export const useProjectStore = defineStore(
       currentTaskId: null as number | null,
       intervalId: null as NodeJS.Timeout | null
     });
-  
-    // Метод для открытия задачи с проверкой таймера
+
+    watch(
+      () => selectedTask.value?.id,
+      (newTaskId, oldTaskId) => {
+        if (newTaskId !== oldTaskId) {
+          resetTimer();
+          
+          // Восстанавливаем время если открыли ту же задачу
+          if (selectedTask.value?.time) {
+            const [h, m, s] = selectedTask.value.time.split(":").map(Number);
+            timer.total = h * 3600 + m * 60 + s;
+          }
+        }
+      }
+    );
+    
+    // 2. Упрощаем метод openTaskEditor
     const openTaskEditor = (task: any) => {
       if (timer.isRunning && task.id !== timer.currentTaskId) {
         toast("Невозможно открыть другую задачу", {
@@ -31,46 +46,48 @@ export const useProjectStore = defineStore(
         });
         return;
       }
-  
+    
       selectedTask.value = {
         ...task,
         due_date: task.due_date ? new Date(task.due_date) : null
       };
       isTaskSheetOpen.value = true;
       
-      // Инициализация таймера для новой задачи
-      resetTimer();
-      if (task.time) {
-        const [h, m, s] = task.time.split(":").map(Number);
-        timer.total = h * 3600 + m * 60 + s;
-      }
     };
   
+    // 1. Computed URL для таймера
+    const timerApiUrl = computed(() => 
+      selectedTask.value ? `/task/${selectedTask.value.id}/track-time/` : null
+    );
+
+    // 2. API клиент для таймера (без body)
+    const timerApi = useApi(timerApiUrl, {
+      method: "POST",
+      watch: false,
+      immediate: false
+    });
+
+    // 4. Основные методы
     const toggleTimer = async () => {
       if (!selectedTask.value) return;
       
-      clearInterval(timer.intervalId!);
-      timer.intervalId = null;
-  
+      clearTimerInterval();
+      
       try {
-        const response = await useApi(
-          `/task/${selectedTask.value.id}/track-time/`,
-          { method: "POST" }
-        );
-  
-        const data = response.data.value;
-        const status = data?.status;
-  
+        await timerApi.execute();
+        const status = timerApi.data.value?.status;
+        
         if (status === "timer_started") {
           startTimer();
         } else if (status === "timer_stopped") {
-          stopTimer(data?.total_time);
+          stopTimer(timerApi.data.value?.total_time);
         }
       } catch (error) {
         console.error("Ошибка таймера:", error);
+        toast.error("Ошибка управления таймером");
       }
     };
-  
+
     const startTimer = () => {
       timer.isRunning = true;
       timer.startTime = new Date();
@@ -78,16 +95,16 @@ export const useProjectStore = defineStore(
       timer.elapsed = 0;
       startTimerInterval();
     };
-  
+
     const stopTimer = (totalTime?: string) => {
       timer.isRunning = false;
       if (totalTime) {
         const [h, m, s] = totalTime.split(":").map(Number);
         timer.total = h * 3600 + m * 60 + s;
       }
-      updateSelectedTask()
+      updateSelectedTask();
     };
-  
+
     const startTimerInterval = () => {
       timer.intervalId = setInterval(() => {
         if (timer.isRunning && timer.startTime) {
@@ -97,16 +114,23 @@ export const useProjectStore = defineStore(
         }
       }, 1000);
     };
-  
+
+    const clearTimerInterval = () => {
+      if (timer.intervalId) {
+        clearInterval(timer.intervalId);
+        timer.intervalId = null;
+      }
+    };
+
     const resetTimer = () => {
-      clearInterval(timer.intervalId!);
+      clearTimerInterval();
       timer.isRunning = false;
       timer.startTime = null;
       timer.elapsed = 0;
       timer.total = 0;
       timer.currentTaskId = selectedTask.value?.id || null;
     };
-  
+
     const formatTime = (totalSeconds: number) => {
       const hours = Math.floor(totalSeconds / 3600);
       const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -135,16 +159,36 @@ export const useProjectStore = defineStore(
         : null
     }
 
-    const updateSelectedTask = async () => {
-      const { data } = await useApi(`/task/${selectedTask.value.id}/`, {
-        method: "GET",
-      });
-      selectedTask.value = {
-        ...data.value,
-        due_date: data.value.due_date ? new Date(data.value.due_date) : null,
-      };
+    // 1. Добавляем computed URL и payload ref
+    const getTaskApiUrl = computed(() => selectedTask.value ? `/task/${selectedTask.value.id}/` : null);
 
-      updateTaskInStore(selectedTask.value)
+    // 2. Создаем API клиент
+    const getTaskApi = useApi(getTaskApiUrl, {
+      method: "GET",
+      watch: false,
+      immediate: false
+    });
+
+    // 3. Обновленная функция
+    const updateSelectedTask = async () => {
+      if (!selectedTask.value) return;
+
+      try {
+        await getTaskApi.execute();
+        
+        if (getTaskApi.data.value) {
+          const updatedTask = {
+            ...getTaskApi.data.value,
+            due_date: getTaskApi.data.value.due_date ? new Date(getTaskApi.data.value.due_date) : null
+          };
+          
+          selectedTask.value = updatedTask;
+          updateTaskInStore(updatedTask);
+        }
+      } catch (error) {
+        console.error("Ошибка при обновлении задачи:", error);
+        toast.error("Не удалось обновить данные задачи");
+      }
     };
 
     const fetchProjects = async () => {
