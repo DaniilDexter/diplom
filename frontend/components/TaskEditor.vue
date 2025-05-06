@@ -3,7 +3,7 @@ import { parseDate, type CalendarDate } from "@internationalized/date";
 import { format, parseISO } from "date-fns";
 import { toast } from "vue-sonner";
 
-
+const userStore = useUserStore()
 const projectStore = useProjectStore()
 
 const { currentProject, selectedTask, isTaskSheetOpen, timer } = storeToRefs(projectStore)
@@ -58,7 +58,7 @@ watch(
           task.due_date.toISOString().slice(0, 10)
         );
       } else {
-        calendarDate.value = parseDate(task.due_date.slice(0, 10)); // Если это уже строка
+        calendarDate.value = parseDate(task.due_date.slice(0, 10));
       }
     } else {
       calendarDate.value = undefined;
@@ -134,7 +134,6 @@ const subtaskCreatePayload = ref();
 const subtaskUpdatePayload = ref();
 const subtaskDeletePayload = ref();
 
-// 2. API клиенты
 const taskApi = useApi(taskApiUrl, {
   method: "PATCH",
   body: taskPayload,
@@ -178,7 +177,6 @@ const subtaskDeleteApi = useApi(subtaskDeleteApiUrl, {
   immediate: false
 });
 
-// 3. Основные методы
 const updateTask = async () => {
   if (timer.value.isRunning) {
     toast.warning("Остановите таймер перед сохранением");
@@ -249,7 +247,6 @@ const submitReport = async () => {
   }
 };
 
-// 4. Методы для подзадач
 const addSubtask = async () => {
   if (!newSubtaskTitle.value.trim() || !selectedTask.value) return;
 
@@ -329,6 +326,11 @@ const toggleSubtaskCompletion = async (subtask: any, event: Event) => {
     subtaskUpdatePayload.value = null;
   }
 };
+
+const handleDBClick = (subtask) => {
+  if (selectedTask.value.is_completed) return
+  currentSubtask.value = subtask
+}
 </script>
 
 <template>
@@ -341,7 +343,7 @@ const toggleSubtaskCompletion = async (subtask: any, event: Event) => {
         </SheetDescription>
       </SheetHeader>
 
-      <div class="grid gap-4 py-4">
+      <div class="grid gap-4 py-4 px-4">
         <TaskStepper
           :createdAt="selectedTask.created_at"
           :assignedAt="selectedTask.assigned_at"
@@ -357,13 +359,14 @@ const toggleSubtaskCompletion = async (subtask: any, event: Event) => {
             @click="projectStore.toggleTimer()"
             :variant="timer.isRunning ? 'destructive' : 'default'"
             :disabled="!selectedTask"
+            v-if="!selectedTask.is_completed"
             class="timer-button px-4 py-2 rounded-md transition-colors"
           >
             <Icon
               :name="timer.isRunning ? 'lucide:square' : 'lucide:play'"
               class="h-4 w-4 mr-2"
             />
-            {{ timer.isRunning ? "Остановить" : "Запустить" }}
+            {{ timer.isRunning ? "Остановить" : "Приступить" }}
           </Button>
 
           <div class="timer-display flex flex-col">
@@ -384,18 +387,17 @@ const toggleSubtaskCompletion = async (subtask: any, event: Event) => {
             </div>
           </div>
         </div>
-        <!-- Название задачи -->
         <div class="grid grid-cols-4 items-center gap-4">
           <label for="title" class="text-right">Название</label>
-          <Input id="title" v-model="selectedTask.title" class="col-span-3" />
+          <Input id="title" v-model="selectedTask.title" :disabled="selectedTask.is_completed" class="col-span-3" />
         </div>
 
-        <!-- Описание -->
         <div class="grid grid-cols-4 items-center gap-4">
           <label for="description" class="text-right">Описание</label>
           <Textarea
             id="description"
             v-model="selectedTask.description"
+            :disabled="selectedTask.is_completed"
             class="col-span-3"
             rows="4"
           />
@@ -405,7 +407,7 @@ const toggleSubtaskCompletion = async (subtask: any, event: Event) => {
           <div class="flex items-center justify-between">
             <h4 class="font-medium">Отчёт</h4>
             <Dialog v-model:open="isReportDialogOpen">
-              <DialogTrigger as-child>
+              <DialogTrigger as-child v-if="selectedTask.started_at && selectedMember.id === userStore.user.id && !selectedTask.is_completed">
                 <Button variant="outline" size="sm">
                   {{
                     selectedTask.report ? "Редактировать" : "Добавить"
@@ -484,7 +486,7 @@ const toggleSubtaskCompletion = async (subtask: any, event: Event) => {
           <div class="flex items-center justify-between">
             <h4 class="font-medium">Комментарии</h4>
             <Dialog v-model:open="isCommentDialogOpen">
-              <DialogTrigger as-child>
+              <DialogTrigger as-child v-if="userStore.currentProjectRole === 1 && selectedTask.submitted_at && !selectedTask.is_completed">
                 <Button variant="outline" size="sm">
                   Добавить комментарий
                 </Button>
@@ -553,161 +555,121 @@ const toggleSubtaskCompletion = async (subtask: any, event: Event) => {
           </p>
         </div>
 
-        <div class="grid grid-cols-4 items-center gap-4">
+        <div class="w-full grid grid-cols-4 items-center gap-4">
           <label class="text-right">Теги</label>
-          <Combobox
-            v-model="selectedTags"
-            multiple
-            by="id"
-            class="col-span-3"
-          >
-            <ComboboxAnchor as-child>
-              <ComboboxTrigger as-child>
-                <Button variant="outline" class="w-full justify-between">
-                  {{
-                    selectedTags?.length
-                      ? selectedTags.map((t) => t.name).join(", ")
-                      : "Выберите теги"
-                  }}
-                  <Icon
-                    name="lucide:chevrons-up-down"
-                    class="ml-2 h-4 w-4 opacity-50"
-                  />
-                </Button>
-              </ComboboxTrigger>
-            </ComboboxAnchor>
+          <div class="col-span-3">
+            <Select v-model="selectedTags" :multiple="true" :disabled="selectedTask.is_completed">
+              <SelectTrigger class="w-full flex flex-row flex-wrap gap-1 items-center min-h-[2.5rem] !h-auto px-2 py-1">
+                <template v-if="selectedTags?.length">
+                  <Badge
+                    v-for="tag in selectedTags"
+                    :key="tag.id"
+                    variant="outline"
+                    class="text-sm"
+                  >
+                    <Icon name="lucide:tag" class="size-4 mr-2" :style="{ color: tag.color }"/>
+                    {{ tag.name }}
+                  </Badge>
+                </template>
+                <span v-else class="text-muted-foreground">Выберите теги</span>
+              </SelectTrigger>
 
-            <ComboboxList>
-              <div class="relative w-full max-w-sm items-center">
-                <ComboboxInput
-                  class="pl-9 focus-visible:ring-0 border-0 border-b rounded-none h-10"
-                  placeholder="Выберите участников..."
-                />
-                <span
-                  class="absolute start-0 inset-y-0 flex items-center justify-center px-3"
-                >
-                  <Icon
-                    name="lucide:search"
-                    class="size-4 text-muted-foreground"
-                  />
-                </span>
-              </div>
+              <SelectContent class="w-full">
+                <SelectGroup>
+                  <SelectLabel>Доступные теги</SelectLabel>
+                  <SelectItem
+                    v-for="tag in tags"
+                    :key="tag.id"
+                    :value="tag"
+                  >
+                    <div class="flex items-center justify-between w-full">
+                      <Icon name="lucide:tag" class="size-4 mr-2" :style="{ color: tag.color }"/>
+                      <span>{{ tag.name }}</span>
+                    </div>
+                  </SelectItem>
+                </SelectGroup>
 
-              <ComboboxEmpty> Не найдено участников. </ComboboxEmpty>
-
-              <ComboboxGroup>
-                <ComboboxItem v-for="tag in tags" :key="tag.id" :value="tag">
-                  <Icon name="lucide:user" class="size-4 mr-2" />
-                  {{ tag.name }}
-
-                  <ComboboxItemIndicator>
-                    <Icon name="lucide:check" class="ml-auto h-4 w-4'" />
-                  </ComboboxItemIndicator>
-                </ComboboxItem>
-              </ComboboxGroup>
-            </ComboboxList>
-          </Combobox>
+                <div v-if="tags.length === 0" class="px-4 py-2 text-sm text-muted-foreground">
+                  Тегов не найдено.
+                </div>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
+
+        <!-- Приоритет -->
         <div class="grid grid-cols-4 items-center gap-4">
           <label class="text-right">Приоритет</label>
-          <Combobox v-model="selectedPriority" by="id" class="col-span-3">
-            <ComboboxAnchor as-child>
-              <ComboboxTrigger as-child>
-                <Button variant="outline" class="w-full justify-between">
+          <div class="col-span-3">
+            <Select v-model="selectedPriority" :disabled="selectedTask.is_completed">
+              <SelectTrigger class="w-full justify-between">
+                <span>
+                  <Icon v-if="selectedPriority" name="lucide:flag" class="size-4 mr-2" :style="{ color: selectedPriority.color }"/>
                   {{ selectedPriority?.name || "Укажите приоритет" }}
-                  <Icon
-                    name="lucide:chevrons-up-down"
-                    class="ml-2 h-4 w-4 opacity-50"
-                  />
-                </Button>
-              </ComboboxTrigger>
-            </ComboboxAnchor>
-
-            <ComboboxList>
-              <div class="relative w-full max-w-sm items-center">
-                <ComboboxInput
-                  class="pl-9 focus-visible:ring-0 border-0 border-b rounded-none h-10"
-                  placeholder="Выберите участников..."
-                />
-                <span
-                  class="absolute start-0 inset-y-0 flex items-center justify-center px-3"
-                >
-                  <Icon
-                    name="lucide:search"
-                    class="size-4 text-muted-foreground"
-                  />
                 </span>
-              </div>
+              </SelectTrigger>
 
-              <ComboboxEmpty>Приоритетов не найдено</ComboboxEmpty>
+              <SelectContent class="w-full">
+                <SelectGroup>
+                  <SelectLabel>Приоритеты</SelectLabel>
+                  <SelectItem
+                    v-for="priority in priorities"
+                    :key="priority.id"
+                    :value="priority"
+                  >
+                    <div class="flex items-center justify-between w-full">
+                      <Icon name="lucide:flag" class="size-4 mr-2" :style="{ color: priority.color }"/>
+                      <span>{{ priority.name }}</span>
+                    </div>
+                  </SelectItem>
+                </SelectGroup>
 
-              <ComboboxGroup>
-                <ComboboxItem
-                  v-for="priority in priorities"
-                  :key="priority.id"
-                  :value="priority"
-                >
-                  <Icon name="lucide:user" class="size-4 mr-2" />
-                  {{ priority.name }}
-                  <ComboboxItemIndicator>
-                    <Icon name="lucide:check" class="ml-auto h-4 w-4" />
-                  </ComboboxItemIndicator>
-                </ComboboxItem>
-              </ComboboxGroup>
-            </ComboboxList>
-          </Combobox>
+                <div v-if="priorities.length === 0" class="px-4 py-2 text-sm text-muted-foreground">
+                  Приоритетов не найдено.
+                </div>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
+        <!-- Назначено -->
         <div class="grid grid-cols-4 items-center gap-4">
           <label class="text-right">Назначено</label>
-          <Combobox v-model="selectedMember" by="id" class="col-span-3">
-            <ComboboxAnchor as-child>
-              <ComboboxTrigger as-child>
-                <Button variant="outline" class="w-full justify-between">
-                  {{ selectedMember?.username || "Выберите участника" }}
-                  <Icon
-                    name="lucide:chevrons-up-down"
-                    class="ml-2 h-4 w-4 opacity-50"
-                  />
-                </Button>
-              </ComboboxTrigger>
-            </ComboboxAnchor>
-
-            <ComboboxList>
-              <div class="relative w-full max-w-sm items-center">
-                <ComboboxInput
-                  class="pl-9 focus-visible:ring-0 border-0 border-b rounded-none h-10"
-                  placeholder="Выберите участников..."
-                />
-                <span
-                  class="absolute start-0 inset-y-0 flex items-center justify-center px-3"
-                >
-                  <Icon
-                    name="lucide:search"
-                    class="size-4 text-muted-foreground"
-                  />
-                </span>
-              </div>
-
-              <ComboboxEmpty>Участник не найден</ComboboxEmpty>
-
-              <ComboboxGroup>
-                <ComboboxItem
-                  v-for="member in members"
-                  :key="member.id"
-                  :value="member"
-                >
+          <div class="col-span-3">
+            <Select v-model="selectedMember" class="col-span-3" :disabled="!!selectedTask.assigned_at || userStore.currentProjectRole !== 1">
+              <SelectTrigger class="w-full justify-between">
+                <span>
                   <Icon name="lucide:user" class="size-4 mr-2" />
-                  {{ member.username }}
-                  <ComboboxItemIndicator>
-                    <Icon name="lucide:check" class="ml-auto h-4 w-4" />
-                  </ComboboxItemIndicator>
-                </ComboboxItem>
-              </ComboboxGroup>
-            </ComboboxList>
-          </Combobox>
+                  {{ selectedMember?.username || "Выберите участника" }}
+                  <Badge v-if="selectedMember" variant="outline">{{ selectedMember.role.name }}</Badge>
+                </span>
+              </SelectTrigger>
+
+              <SelectContent class="w-full">
+                <SelectGroup>
+                  <SelectLabel>Участники</SelectLabel>
+                  <SelectItem
+                    v-for="member in members"
+                    :key="member.id"
+                    :value="member"
+                  >
+                    <div class="flex items-center w-full gap-2">
+                      <Icon name="lucide:user" class="size-4 mr-2" />
+                      <span>{{ member.username }}</span>
+                      <Badge variant="outline">{{ member.role.name }}</Badge>
+                    </div>
+                  </SelectItem>
+                </SelectGroup>
+
+                <div v-if="members.length === 0" class="px-4 py-2 text-sm text-muted-foreground">
+                  Участников не найдено.
+                </div>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
+
 
         <!-- Срок выполнения -->
         <div class="grid grid-cols-4 items-center gap-4">
@@ -717,6 +679,7 @@ const toggleSubtaskCompletion = async (subtask: any, event: Event) => {
               <Button
                 variant="outline"
                 class="col-span-3 justify-start text-left font-normal"
+                :disabled="userStore.currentProjectRole !== 1 || selectedTask.is_completed"
               >
                 <Icon name="lucide:calendar" class="mr-2 h-4 w-4" />
                 {{
@@ -741,6 +704,7 @@ const toggleSubtaskCompletion = async (subtask: any, event: Event) => {
                 placeholder="Новая подзадача"
                 class="w-[200px]"
                 @keyup.enter="addSubtask"
+                :disabled="selectedTask.is_completed"
               />
               <Button
                 size="sm"
@@ -762,11 +726,12 @@ const toggleSubtaskCompletion = async (subtask: any, event: Event) => {
               v-for="subtask in selectedTask.subtasks"
               :key="subtask.id"
               class="flex items-center gap-3 rounded border p-3 text-sm"
-              @dblclick="currentSubtask = { ...subtask }"
+              @dblclick="handleDBClick(subtask)"
             >
               <Checkbox
                 v-model="subtask.is_completed"
                 @click.stop="toggleSubtaskCompletion(subtask, $event)"
+                :disabled="selectedTask.is_completed"
                 class="pointer-events-auto"
               />
 
@@ -792,6 +757,7 @@ const toggleSubtaskCompletion = async (subtask: any, event: Event) => {
               <Button
                 variant="ghost"
                 size="sm"
+                :disabled="selectedTask.is_completed"
                 @click.stop="deleteSubtask(subtask.id)"
               >
                 <Icon

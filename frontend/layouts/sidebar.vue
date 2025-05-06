@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { LazyClientOnly } from '#components'
 import { SIDEBAR_COOKIE_NAME } from '@/components/ui/sidebar/utils'
 import { useBreadcrumbs } from '@/composables/useBreadcrumbs'
 
@@ -23,6 +24,7 @@ const sidebarState = useCookie<boolean>(SIDEBAR_COOKIE_NAME)
           <div class="flex items-center gap-2 px-4">
             <SidebarTrigger class="-ml-1" />
             <Separator orientation="vertical" class="mr-2 h-4" />
+            <LazyClientOnly>
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem v-for="(crumb, index) in breadcrumbs" :key="index" as-child>
@@ -41,6 +43,7 @@ const sidebarState = useCookie<boolean>(SIDEBAR_COOKIE_NAME)
                 </BreadcrumbItem>
               </BreadcrumbList>
             </Breadcrumb>
+            </LazyClientOnly>
           </div>
         </header>
         <div class="mx-auto flex min-h-[calc(100vh-64px)] w-full flex-col px-4 pb-4">

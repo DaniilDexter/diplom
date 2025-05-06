@@ -5,6 +5,7 @@ export const useUserStore = defineStore(
     const authToken = useCookie('authT')
     const isAuthenticated = computed(() => !!authToken.value)
     const userFriends = ref(null)
+    const projectsStore = useProjectStore()
 
     const fetchUserApi = useApi('/auth/me', {
       method: 'GET',
@@ -19,6 +20,15 @@ export const useUserStore = defineStore(
       method: 'GET',
       immediate: true
     })
+
+    watch(user, (newUser) => {
+      if (newUser) {
+        userFriends.value = null
+        fetchFriends()
+      } else {
+        userFriends.value = null
+      }
+    }, { immediate: true })
 
     const fetchUser = async () => {
       if (!isAuthenticated.value || user.value) return
@@ -48,10 +58,22 @@ export const useUserStore = defineStore(
       }
     }
 
+    const currentProjectRole = computed(() => {
+      if (!user.value || !projectsStore.currentProject) return null
+      
+      const currentUserMember = projectsStore.currentProject.members.find(
+        member => member.user.id === user.value.id
+      )
+      
+      return currentUserMember ? currentUserMember.role.id : null
+    })
+
+
     return {
       user,
       isAuthenticated,
       userFriends,
+      currentProjectRole,
       fetchFriends,
       fetchUser
     }

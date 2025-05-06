@@ -27,7 +27,7 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Project
-        fields = ['id', 'name', 'description', 'key', 'created_at', 'boards', 'members', 'tags', 'priorities']
+        fields = ['id', 'name', 'description', 'key', 'created_at', 'owner', 'boards', 'members', 'tags', 'priorities']
 
     def get_boards(self, obj):
         boards = Board.objects.filter(project=obj)

@@ -25,13 +25,10 @@ class ProjectViewSet(ModelViewSet):
     queryset = Project.objects.none()
 
     def get_queryset(self):
-        # Базовый queryset - все проекты, где пользователь является участником
         queryset = Project.objects.filter(members=self.request.user)
         
-        # Можно добавить дополнительные фильтры в зависимости от действия
         if self.action == 'list':
-            # Для списка проектов можно добавить сортировку или другие фильтры
-            queryset = queryset.order_by('-created_at')  # например, сортировка по дате создания
+            queryset = queryset.order_by('-created_at')
         
         return queryset
 
@@ -57,7 +54,7 @@ class ProjectViewSet(ModelViewSet):
         )
 
         member_ids = serializer.validated_data.get('members', [])
-        
+
         if request.user.id not in member_ids:
             member_ids.append(request.user.id)
 
@@ -72,16 +69,16 @@ class ProjectViewSet(ModelViewSet):
 
         project.members.add(*users)
 
+        for user in users:
+            role_id = 1 if user == request.user else user.role_id
+            ProjectMembers.objects.filter(project=project, user=user).update(role_id=role_id)
+
         self.create_default_project_elements(project)
 
-        return Response(
-            ProjectSerializer(project).data,
-            status=status.HTTP_201_CREATED
-        )
+
+        return Response(ProjectSerializer(project).data, status=status.HTTP_201_CREATED)
     
     def create_default_project_elements(self, project):
-        """Создает базовые элементы для нового проекта"""
-        # 1. Создаем базовые приоритеты
         default_priorities = [
             {'name': 'Низкий', 'color': '#4CAF50', 'order': 0},
             {'name': 'Средний', 'color': '#FFC107', 'order': 1},
@@ -98,7 +95,6 @@ class ProjectViewSet(ModelViewSet):
                 is_default=True
             )
 
-        # 2. Создаем базовые теги
         default_tags = [
             {'name': 'Фронтенд', 'color': '#2196F3'},
             {'name': 'Бэкенд', 'color': '#673AB7'},
@@ -114,11 +110,11 @@ class ProjectViewSet(ModelViewSet):
                 is_default=True
             )
 
-        # 3. Создаем доску спринта с базовыми колонками
         sprint_board = Board.objects.create(
             project=project,
             name='Спринт',
-            is_sprint=True
+            is_sprint=True,
+            icon='fxemoji:smallorangediamond'
         )
 
         default_columns = [
@@ -136,7 +132,6 @@ class ProjectViewSet(ModelViewSet):
                 is_default=True
             )
 
-        # 4. Создаем общую доску (опционально)
         general_board = Board.objects.create(
             project=project,
             name='Общая доска'
@@ -149,13 +144,107 @@ class ProjectViewSet(ModelViewSet):
                 order=column['order'],
                 is_default=True
             )
+
+    @action(detail=True, methods=['POST'], url_path='update-members')
+    def update_members(self, request, pk=None):
+        project = self.get_object()
+        member_ids = request.data.get('members', [])
+
+        if project.owner.id not in member_ids:
+            member_ids.append(project.owner.id)
+
+        users = User.objects.filter(id__in=member_ids)
+        if users.count() != len(set(member_ids)):
+            existing_ids = set(users.values_list('id', flat=True))
+            invalid_ids = set(member_ids) - existing_ids
+            return Response(
+                {"detail": f"Не найдены пользователи с ID: {', '.join(map(str, invalid_ids))}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        project.members.set(users)
+
+        for user in users:
+            role_id = 1 if user == project.owner else user.role_id
+            ProjectMembers.objects.update_or_create(
+                project=project,
+                user=user,
+                defaults={'role_id': role_id}
+            )
+
+        return Response(ProjectSerializer(project).data, status=status.HTTP_200_OK)
+    
+    @action(detail=True, methods=['POST'], url_path='promote-to-leader')
+    def promote_to_leader(self, request, pk=None):
+        project = self.get_object()
+        user_id = request.data.get('user_id')
+        
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "Пользователь не найден"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        ProjectMembers.objects.filter(project=project, user=user).update(role_id=1)
+        
+        project.refresh_from_db()
+        return Response(ProjectSerializer(project).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['POST'], url_path='demote-to-member')
+    def demote_to_member(self, request, pk=None):
+        project = self.get_object()
+        user_id = request.data.get('user_id')
+        
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "Пользователь не найден"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        user_role_id = user.role_id
+        
+        ProjectMembers.objects.filter(project=project, user=user).update(role_id=user_role_id)
+        
+        project.refresh_from_db()
+        return Response(ProjectSerializer(project).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['POST'], url_path='remove-member')
+    def remove_member(self, request, pk=None):
+        project = self.get_object()
+
+        user_id = request.data.get('user_id')
+        if not user_id:
+            return Response(
+                {"detail": "Не указан ID пользователя"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if user_id == project.owner.id:
+            return Response(
+                {"detail": "Нельзя удалить владельца проекта"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "Пользователь не найден"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        project.members.remove(user)
+        return Response(
+            ProjectSerializer(project).data,
+            status=status.HTTP_200_OK
+        )
     
     @action(detail=True, methods=['GET'], url_path='boards')
     def get_project_boards(self, request, pk=None):
-        """
-        Получение всех досок определенного проекта
-        URL: /api/v1/project/<id>/boards/
-        """
 
         project = Project.objects.get(pk=pk)
         
@@ -166,6 +255,38 @@ class ProjectViewSet(ModelViewSet):
             'project_id': pk,
             'boards': serializer.data
         }, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=['POST'], url_path='add-member-by-key')
+    def add_member_by_key(self, request):
+        key = request.data.get('key')  # Ключ проекта
+        user_id = request.data.get('user_id')  # ID пользователя для добавления
+
+        if not key or not user_id:
+            return Response({"detail": "Ключ проекта и ID пользователя обязательны."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            project = Project.objects.get(key=key)
+        except Project.DoesNotExist:
+            return Response({"detail": "Проект с таким ключом не найден."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({"detail": "Пользователь не найден."}, status=status.HTTP_404_NOT_FOUND)
+
+        if project.members.filter(id=user_id).exists():
+            return Response({"detail": "Пользователь уже является участником проекта."}, status=status.HTTP_400_BAD_REQUEST)
+
+        project.members.add(user)
+
+        role_id = user.role_id  # Получаем роль пользователя
+        ProjectMembers.objects.update_or_create(
+            project=project,
+            user=user,
+            defaults={'role_id': role_id}
+        )
+
+        return Response(ProjectSerializer(project).data, status=status.HTTP_200_OK)
     
 class ProjectMembersViewSet(ModelViewSet):
     serializer_class = ProjectMembersSerializer

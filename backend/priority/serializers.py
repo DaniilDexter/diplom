@@ -5,4 +5,4 @@ from .models import Priority
 class PrioritySerializer(serializers.ModelSerializer):
     class Meta:
         model = Priority
-        fields = ['id', 'project', 'name', 'description', 'color', 'is_default', 'order']
+        fields = ['id', 'project', 'name', 'color', 'is_default', 'order']

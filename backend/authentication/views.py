@@ -1,8 +1,8 @@
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import ValidationError, NotFound, AuthenticationFailed
-from authentication.models import User, UserRole
-from authentication.serializers import UserRoleSerializer, UserSerializer
+from authentication.models import User, UserRole, FriendRequest
+from authentication.serializers import UserRoleSerializer, UserSerializer, FriendRequestSerializer
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -59,7 +59,179 @@ class UserViewSet(ModelViewSet):
         data = self.serializer_class(user).data
         return Response(data)
     
-    @action(detail=False, methods=['POST'], permission_classes=[IsAuthenticated])
+    
+    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated])
+    def search(self, request):
+        username = request.query_params.get('username', '')
+        if not username:
+            return Response(
+                {'error': 'Параметр username обязателен'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        friend_ids = request.user.friends.values_list('id', flat=True)
+        
+        users = User.objects.filter(
+            username__istartswith=username
+        ).exclude(
+            id=request.user.id
+        ).exclude(
+            id__in=friend_ids
+        )
+        
+        serializer = self.get_serializer(users, many=True)
+        return Response(serializer.data)
+
+
+    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated])
+    def friends(self, request):
+        """Получение списка друзей"""
+        friends = request.user.friends.all()
+        serializer = self.get_serializer(friends, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['POST'], permission_classes=[IsAuthenticated], url_path='send-friend-request')
+    def send_friend_request(self, request):
+        """Отправка запроса в друзья"""
+        username = request.data.get('username')
+        if not username:
+            return Response(
+                {'error': 'Поле username обязательно'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            receiver = User.objects.get(username=username)
+        except User.DoesNotExist:
+            return Response(
+                {'error': 'Пользователь не найден'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if receiver == request.user:
+            return Response(
+                {'error': 'Нельзя отправить запрос самому себе'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Проверяем, не отправили ли уже запрос
+        if FriendRequest.objects.filter(
+            sender=request.user, 
+            receiver=receiver,
+            status=FriendRequest.PENDING
+        ).exists():
+            return Response(
+                {'error': 'Вы уже отправили запрос этому пользователю'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Проверяем, не являются ли уже друзьями
+        if request.user.friends.filter(id=receiver.id).exists():
+            return Response(
+                {'error': 'Этот пользователь уже у вас в друзьях'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        friend_request = FriendRequest.objects.create(
+            sender=request.user,
+            receiver=receiver
+        )
+        
+        return Response(
+            {
+                'message': f'Запрос дружбы отправлен пользователю {username}',
+                'request': FriendRequestSerializer(friend_request, context={'request': request}).data
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+    @action(detail=False, methods=['POST'], permission_classes=[IsAuthenticated], url_path='respond-friend-request')
+    def respond_friend_request(self, request):
+        """Ответ на запрос в друзья"""
+        request_id = request.data.get('request_id')
+        accept = request.data.get('accept', False)
+        
+        try:
+            friend_request = FriendRequest.objects.get(
+                id=request_id,
+                receiver=request.user,
+                status=FriendRequest.PENDING
+            )
+        except FriendRequest.DoesNotExist:
+            return Response(
+                {'error': 'Запрос не найден или уже обработан'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        if accept:
+            # Добавляем в друзья
+            request.user.friends.add(friend_request.sender)
+            friend_request.sender.friends.add(request.user)
+            friend_request.status = FriendRequest.ACCEPTED
+            message = 'Запрос дружбы принят'
+        else:
+            friend_request.status = FriendRequest.REJECTED
+            message = 'Запрос дружбы отклонен'
+        
+        friend_request.save()
+        
+        return Response(
+            {
+                'message': message,
+                'friends': UserSerializer(
+                    request.user.friends.all(), 
+                    many=True, 
+                    context={'request': request}
+                ).data
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated], url_path='friend-requests')
+    def friend_requests(self, request):
+        """Получение списка входящих запросов в друзья"""
+        requests = FriendRequest.objects.filter(
+            receiver=request.user,
+            status=FriendRequest.PENDING
+        ).order_by('-created_at')
+        
+        serializer = FriendRequestSerializer(requests, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['PATCH'], permission_classes=[IsAuthenticated], url_path='update-profile')
+    def update_profile(self, request):
+        """Обновление профиля пользователя"""
+        user = request.user
+        photo = request.data.get('photo')
+        role_id = request.data.get('role')
+        
+        if photo is not None:
+            user.photo = photo
+        
+        if role_id is not None:
+            try:
+                role = UserRole.objects.get(id=role_id)
+                user.role = role
+            except UserRole.DoesNotExist:
+                return Response(
+                    {'error': 'Указанная роль не существует'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        user.save()
+        
+        return Response(
+            UserSerializer(user, context={'request': request}).data,
+            status=status.HTTP_200_OK
+        )
+
+    # Обновим существующий метод add_friend (можно оставить для обратной совместимости или удалить)
+    @action(detail=False, methods=['POST'], permission_classes=[IsAuthenticated], url_path='add-friend')
+    def add_friend(self, request):
+        """Совместимость со старым API, теперь использует систему запросов"""
+        return self.send_friend_request(request)
+    
+    @action(detail=False, methods=['POST'], permission_classes=[IsAuthenticated], url_path='remove-friend')
     def remove_friend(self, request):
         username = request.data.get('username')
         if not username:
@@ -94,69 +266,6 @@ class UserViewSet(ModelViewSet):
             'message': f'Пользователь {username} удалён из друзей',
             'friends': UserSerializer(current_friends, many=True, context={'request': request}).data
         }, status=status.HTTP_200_OK)
-    
-    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated])
-    def search(self, request):
-        username = request.query_params.get('username', '')
-        if not username:
-            return Response(
-                {'error': 'Параметр username обязателен'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        users = User.objects.filter(
-            username__istartswith=username
-        ).exclude(id=request.user.id)
-        
-        serializer = self.get_serializer(users, many=True)
-        return Response(serializer.data)
-
-    @action(detail=False, methods=['POST'], permission_classes=[IsAuthenticated])
-    def add_friend(self, request):
-        username = request.data.get('username')
-        if not username:
-            return Response(
-                {'error': 'Поле username обязательно'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            friend = User.objects.get(username=username)
-        except User.DoesNotExist:
-            return Response(
-                {'error': 'Пользователь не найден'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        if friend == request.user:
-            return Response(
-                {'error': 'Нельзя добавить себя в друзья'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        if request.user.friends.filter(id=friend.id).exists():
-            return Response(
-                {'error': 'Этот пользователь уже у вас в друзьях'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        request.user.friends.add(friend)
-        friend.friends.add(request.user)
-        
-        return Response(
-            {
-                'message': f'Пользователь {username} добавлен в друзья',
-                'friend': UserSerializer(friend, context={'request': request}).data
-            },
-            status=status.HTTP_200_OK
-        )
-
-    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated])
-    def friends(self, request):
-        """Получение списка друзей"""
-        friends = request.user.friends.all()
-        serializer = self.get_serializer(friends, many=True)
-        return Response(serializer.data)
 
 
 

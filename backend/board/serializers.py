@@ -8,7 +8,7 @@ class BoardSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Board
-        fields = ['id', 'project_id', 'name', 'created_at', 'columns']
+        fields = ['id', 'project_id', 'name', 'created_at', 'icon', 'columns', 'is_sprint']
         extra_kwargs = {
             'project_id': {'required': True}
         }

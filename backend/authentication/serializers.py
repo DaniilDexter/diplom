@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import User, UserRole
+from .models import User, UserRole, FriendRequest
 
 
 class UserRoleSerializer(serializers.ModelSerializer):
@@ -11,7 +11,7 @@ class UserRoleSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
 
-    role = UserRoleSerializer(many=True, required=False)
+    role = UserRoleSerializer(required=False)
 
     class Meta:
         model = User
@@ -29,3 +29,12 @@ class UserSerializer(serializers.ModelSerializer):
         instance.save()
 
         return instance
+    
+class FriendRequestSerializer(serializers.ModelSerializer):
+    sender = UserSerializer(read_only=True)
+    receiver = UserSerializer(read_only=True)
+    
+    class Meta:
+        model = FriendRequest
+        fields = ['id', 'sender', 'receiver', 'created_at', 'status']
+        read_only_fields = ['id', 'created_at', 'status']

@@ -260,6 +260,10 @@ export const useProjectStore = defineStore(
           await fetchProjects()
         }
         updateCurrentProjectAndBoard()
+        if (timer.isRunning) {
+          await toggleTimer()
+        }
+        selectedTask.value = null
       },
       { immediate: true }
     )

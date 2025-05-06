@@ -32,26 +32,57 @@ async function createProject() {
 
     newProject.value.members = selectedUsers.value.map(user => user.id);
     
-    const payload = {
-      name: newProject.value.name,
-      description: newProject.value.description,
-      members: newProject.value.members.map(m => m.id) // отправляем только ID
-    };
-    
-    await executeCreateProject({
-      body: payload
-    });
+    await executeCreateProject();
 
     if (projectData.value?.id) {
-      projects.value.push(projectData.value)
+      projects.value.unshift(projectData.value)
       
+      newProject.value = ({
+        name: "",
+        description: "",
+        members: [],
+      });
+      selectedUsers.value = []
     }
   } catch (error) {
     console.error('Ошибка создания проекта:', error);
   }
 }
 
+const projectKey = ref("");
+const isAddingProject = ref(false);
+const keyError = ref(null)
+const projectKeyPayload = ref(null)
+const projectKeyApi = useApi(`/project/add-member-by-key/`, {
+  method: "POST",
+  body: projectKeyPayload,
+  watch: false,
+  immediate: false
+})
 
+const addProjectKey = async () => {
+  if (!projectKey.value.trim()) return;
+  try {
+    projectKeyPayload.value = {
+      key: projectKey.value,
+      user_id: userStore.user.id
+    }
+    isAddingProject.value = true;
+    await projectKeyApi.execute()
+    projectKeyPayload.value = null
+    projectKey.value = "";
+    if(projectKeyApi.error.value){
+      keyError.value = projectKeyApi.error.value.data.detail
+    }
+    else if(projectKeyApi.data.value.id) {
+      projects.value.unshift(projectKeyApi.data.value)
+    }
+  } catch (error) {
+    console.error("Ошибка при добавлении колонки:", error);
+  } finally {
+    isAddingProject.value = false;
+  }
+};
 </script>
 
 <template>
@@ -59,11 +90,35 @@ async function createProject() {
     <h1 class="text-3xl font-bold mb-6">Мои проекты</h1>
 
     <Sheet ref="sheet">
-      <SheetTrigger as-Child>
-      <Button class="mb-6 flex items-center">
-        <Icon name="lucide:plus" class="size-4 mr-2" /> Новый проект
-      </Button>
-      </SheetTrigger>
+      <div class="flex justify-between">
+        <SheetTrigger as-Child>
+          <Button class="mb-6 flex items-center h-10">
+            <Icon name="lucide:plus" class="size-4 mr-2" /> Новый проект
+          </Button>
+        </SheetTrigger>
+        <div>
+          <div class="flex justify-items-start gap-2">
+            <Input
+              v-model="projectKey"
+              placeholder="Введите ключ проекта"
+              class="max-w-[300px] h-10"
+              @keyup.enter="addProjectKey"
+            />
+            <Button
+              :disabled="!projectKey.trim() || isAddingProject"
+              @click="addProjectKey"
+              class="h-10"
+            >
+              <Icon
+                :name="isAddingProject ? 'svg-spinners:180-ring' : 'lucide:plus'"
+                class="h-4 w-4"
+              />
+              <span class="ml-2">Добавить проект</span>
+            </Button>
+          </div>
+          <p v-if="keyError" class="text-red-500 text-sm">Ошибка: {{ keyError }}</p>
+        </div>
+      </div>
       <SheetContent >
         <SheetHeader>
           <SheetTitle>Создать новый проект</SheetTitle>
@@ -72,44 +127,38 @@ async function createProject() {
           <Input v-model="newProject.name" placeholder="Название проекта" class="w-full" />
           <Textarea v-model="newProject.description" placeholder="Описание" class="w-full" />
           
-          <Combobox v-model="selectedUsers" multiple by="id">
-            <ComboboxAnchor as-child>
-              <ComboboxTrigger as-child>
-                <Button variant="outline" class="w-full justify-between">
-                  {{ selectedUsers.length > 0 ? selectedUsers.map(m => m.username).join(', ') : "Выберите участников" }}
-                  <Icon name="lucide:chevrons-up-down" class="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </ComboboxTrigger>
-            </ComboboxAnchor>
+          <Select v-model="selectedUsers" :multiple="true">
+            <SelectTrigger class="w-full justify-between">
+              <span v-if="selectedUsers.length > 0">
+                {{ selectedUsers.map(user => user.username).join(', ') }}
+              </span>
+              <span v-else>Выберите участников</span>
+            </SelectTrigger>
 
-            <ComboboxList>
-              <div class="relative w-full max-w-sm items-center">
-                <ComboboxInput class="pl-9 focus-visible:ring-0 border-0 border-b rounded-none h-10" placeholder="Выберите участников..." />
-                <span class="absolute start-0 inset-y-0 flex items-center justify-center px-3">
-                  <Icon name="lucide:search" class="size-4 text-muted-foreground" />
-                </span>
-              </div>
+            <SelectContent class="w-full">
 
-              <ComboboxEmpty>
-                Не найдено участников.
-              </ComboboxEmpty>
+              <SelectGroup>
+                <SelectLabel>Друзья</SelectLabel>
 
-              <ComboboxGroup>
-                <ComboboxItem
+                <SelectItem
                   v-for="friend in userFriends"
                   :key="friend.id"
                   :value="friend"
                 >
-                  <Icon name="lucide:user" class="size-4 mr-2" />
-                  {{ friend.username }}
+                  <div class="flex items-center justify-between w-full">
+                    <Icon name="lucide:user" class="size-4 mr-2" />
+                    <span>{{ friend.username }}</span>
+                    <Badge variant="outline" class="ml-2">{{ friend.role.name }}</Badge>
+                  </div>
+                </SelectItem>
+              </SelectGroup>
 
-                  <ComboboxItemIndicator>
-                    <Icon name="lucide:check" class="ml-auto h-4 w-4'" />
-                  </ComboboxItemIndicator>
-                </ComboboxItem>
-              </ComboboxGroup>
-            </ComboboxList>
-          </Combobox>
+              <div v-if="userFriends.length === 0" class="px-4 py-2 text-sm text-muted-foreground">
+                Не найдено участников.
+              </div>
+            </SelectContent>
+          </Select>
+
         </div>
         <SheetFooter>
           <Button @click="createProject" class="flex items-center">

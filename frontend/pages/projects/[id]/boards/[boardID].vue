@@ -63,7 +63,7 @@ const addTaskApiUrl = computed(() =>
 
 const addTaskPayload = ref()
 
-const addTaskApi = useApi(addTaskApiUrl, {
+const addTaskApi = useApi(() => `/task/add-task-to-column/${selectedColumnId.value}/`, {
   method: "POST",
   body: addTaskPayload,
   watch: false,
@@ -183,6 +183,94 @@ const onTaskDragEnd = async (evt: any) => {
 const handleTaskClick = (task: any) => {
   projectStore.openTaskEditor(task);
 };
+
+// Форматирование даты
+const formatDate = (dateString) => {
+  const date = new Date(dateString)
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+}
+
+// Получение инициалов для аватара
+const getInitials = (name) => {
+  if (!name) return ''
+  return name.split(' ').map(n => n[0]).join('').toUpperCase()
+}
+
+// Проверка просроченности
+const isOverdue = (task) => {
+  if (!task.due_date) return false
+  const dueDate = new Date(task.due_date)
+  const today = new Date()
+  return dueDate < today && !isSameDay(dueDate, today)
+}
+
+// Проверка что срок истекает сегодня
+const isDueToday = (task) => {
+  if (!task.due_date) return false
+  const dueDate = new Date(task.due_date)
+  const today = new Date()
+  return isSameDay(dueDate, today)
+}
+
+// Проверка что две даты - один и тот же день
+const isSameDay = (date1, date2) => {
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  )
+}
+
+const getStatusText = (task) => {
+  if (task.is_completed) return 'Завершено'
+  
+  switch(task.status) {
+    case 'in_progress': return 'В работе'
+    case 'in_review': return 'На проверке'
+    case 'todo': return 'К выполнению'
+    default: return 'К выполнению'
+  }
+}
+
+const getTaskStatus = (task) => {
+  if (task.is_completed) return 'completed'
+  if (task.completed_at) return 'completed'
+  if (task.submitted_at) return 'submitted'
+  if (task.started_at) return 'in_progress'
+  if (task.assigned_at) return 'assigned'
+  return 'todo'
+}
+
+const statusLabels = {
+  todo: 'К выполнению',
+  assigned: 'Назначена',
+  in_progress: 'В работе',
+  submitted: 'На проверке',
+  completed: 'Завершено'
+}
+
+const statusClasses = {
+  todo: 'bg-gray-100 text-gray-800',
+  assigned: 'bg-blue-100 text-blue-800',
+  in_progress: 'bg-amber-100 text-amber-800',
+  submitted: 'bg-purple-100 text-purple-800',
+  completed: 'bg-emerald-100 text-emerald-800'
+}
+
+const statusIcons = {
+  todo: 'lucide:circle',
+  assigned: 'lucide:user',
+  in_progress: 'lucide:play',
+  submitted: 'lucide:eye',
+  completed: 'lucide:check'
+}
+
+const calculateProgress = (task) => {
+  if (!task.subtasks?.length) return 0
+  const completed = task.subtasks.filter(st => st.is_completed).length
+  return Math.round((completed / task.subtasks.length) * 100)
+}
+
 </script>
 
 <template>
@@ -214,12 +302,12 @@ const handleTaskClick = (task: any) => {
       <TransitionGroup
         name="columns"
         tag="div"
-        class="flex gap-4 overflow-x-auto pb-4"
+        class="flex gap-4 overflow-x-auto pb-4 h-full scrollbar-container"
       >
         <div
           v-for="column in localColumns"
           :key="column.id"
-          class="min-w-[300px] shrink-0 rounded-lg border bg-card p-4"
+          class="max-w-[360px] w-full shrink-0 rounded-lg border bg-card p-4"
         >
           <h3 class="mb-3 text-lg font-semibold">{{ column.name }}</h3>
 
@@ -258,14 +346,99 @@ const handleTaskClick = (task: any) => {
             :animation="150"
             ghost-class="ghost-task"
           >
-            <template v-for="task in column.tasks">
-              <div
-                class="rounded border p-3 text-sm cursor-move"
-                @click="handleTaskClick(task)"
-              >
-                {{ task.title || "Нет title" }}
+          <template v-for="task in column.tasks">
+            <div
+              class="rounded border p-3 text-sm cursor-move space-y-2 relative"
+              :style="{ 'border-left': `4px solid ${task.priority?.color || '#e5e7eb'}` }"
+              @click="handleTaskClick(task)"
+            >
+              <!-- Заголовок и статус - теперь в колонку -->
+              <div class="flex flex-col gap-2">
+                <!-- Заголовок на всю ширину -->
+                <h4 class="font-medium break-words">{{ task.title || "Нет title" }}</h4>
+                
+                <!-- Бейджи - переносятся на новую строку -->
+                <div class="flex flex-wrap gap-1">
+                  <Badge 
+                    v-if="isOverdue(task)"
+                    class="bg-red-100 text-red-800 flex items-center gap-1"
+                  >
+                    <Icon name="lucide:alert-circle" class="w-3 h-3" />
+                    Просрочено
+                  </Badge>
+                  
+                  <Badge 
+                    v-if="getTaskStatus(task) !== 'todo'"
+                    :class="statusClasses[getTaskStatus(task)]"
+                    class="flex items-center gap-1"
+                  >
+                    <Icon :name="statusIcons[getTaskStatus(task)]" class="w-3 h-3" />
+                    {{ statusLabels[getTaskStatus(task)] }}
+                  </Badge>
+                </div>
               </div>
-            </template>
+
+              <!-- Теги -->
+              <div class="flex flex-wrap gap-1" v-if="task.tags?.length">
+                <Badge
+                  v-for="tag in task.tags"
+                  :key="tag.id"
+                  variant="outline"
+                  class="text-xs"
+                >
+                  <Icon name="lucide:tag" class="size-3 mr-1" :style="{ color: tag.color }"/>
+                  {{ tag.name }}
+                </Badge>
+              </div>
+
+              <!-- Подзадачи (прогресс) -->
+              <div v-if="task.subtasks?.length" class="text-xs text-muted-foreground">
+                <div class="flex items-center gap-1">
+                  <Icon name="lucide:list-checks" class="size-3" />
+                  <span>
+                    {{ task.subtasks.filter(st => st.is_completed).length }}/{{ task.subtasks.length }}
+                  </span>
+                </div>
+                <Progress 
+                  :model-value="calculateProgress(task)" 
+                  class="h-1 mt-1"
+                />
+              </div>
+
+              <!-- Дата выполнения и назначенный -->
+              <div class="flex justify-between items-center pt-1">
+                <div class="flex items-center gap-2">
+                  <!-- Дата выполнения -->
+                  <div 
+                    v-if="task.due_date" 
+                    class="flex items-center gap-1 text-xs"
+                    :class="{
+                      'text-red-500': isOverdue(task) && !task.is_completed,
+                      'text-yellow-500': isDueToday(task) && !task.is_completed,
+                      'text-green-500': task.is_completed
+                    }"
+                  >
+                    <Icon name="lucide:calendar" class="size-3" />
+                    {{ formatDate(task.due_date) }}
+                  </div>
+
+                  <!-- Время выполнения -->
+                  <div v-if="task.time" class="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Icon name="lucide:clock" class="size-3" />
+                    {{ task.time }}
+                  </div>
+                </div>
+
+                <!-- Аватар назначенного -->
+                <Avatar v-if="task.assigned_to" class="size-6">
+                  <AvatarImage v-if="task.assigned_to.photo" :src="task.assigned_to.photo" />
+                  <AvatarFallback v-else>
+                    {{ getInitials(task.assigned_to.username) }}
+                  </AvatarFallback>
+                </Avatar>
+              </div>
+            </div>
+          </template>
           </VueDraggableNext>
         </div>
       </TransitionGroup>
@@ -375,5 +548,37 @@ const handleTaskClick = (task: any) => {
   100% {
     box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
   }
+}
+
+.scrollbar-container {
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1c1 transparent;
+}
+
+/* Для Chrome/Safari */
+.scrollbar-container::-webkit-scrollbar {
+  height: 8px;
+}
+
+.scrollbar-container::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 4px;
+  margin: 0 16px;
+}
+
+.scrollbar-container::-webkit-scrollbar-thumb {
+  background-color: #c1c1c1;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.scrollbar-container::-webkit-scrollbar-thumb:hover {
+  background-color: #a8a8a8;
+}
+
+/* Анимация появления скролла */
+.scrollbar-container {
+  transition: scrollbar-color 0.3s ease;
 }
 </style>

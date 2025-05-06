@@ -1,4 +1,4 @@
-export function useApi<T>(url: string, options: UseFetchOptions<T> = {}) {
+export function useApi<T>(url, options: UseFetchOptions<T> = {}) {
   return useFetch(url, {
     ...options,
     baseURL: 'http://127.0.0.1:8000/api/v1/',
